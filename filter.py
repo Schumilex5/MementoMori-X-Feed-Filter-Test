@@ -2,13 +2,17 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import re
+import warnings
+from bs4 import XMLParsedAsHTMLWarning
+
+# Silence the annoying warning
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 def get_last_id(gist_id, token):
     url = f"https://api.github.com/gists/{gist_id}"
     headers = {"Authorization": f"token {token}"}
     res = requests.get(url, headers=headers)
     if res.status_code == 200:
-        # Retrieves the saved Tweet ID from your Gist memory
         return res.json()['files']['last_id.txt']['content'].strip()
     return "0"
 
@@ -24,7 +28,6 @@ def run_filter():
     gist_id = os.getenv("GIST_ID")
     gist_token = os.getenv("GIST_TOKEN")
     
-    # Refined keywords for MementoMori content
     WANT_KEYWORDS = [
         "新キャラ", "登場", "実装", "ラメント", "lament", "cv", "song by", 
         "予告", "メンテ", "アップデート", "開催", "復刻", "運命ガチャ", "ピックアップ"
@@ -34,7 +37,7 @@ def run_filter():
     ]
 
     if not all([webhook_url, gist_id, gist_token]):
-        print("Error: Missing environment variables. Check GIST_ID and GIST_TOKEN in YAML.")
+        print("Error: Missing environment variables.")
         return
 
     try:
@@ -42,36 +45,36 @@ def run_filter():
         print(f"Checking for tweets newer than ID: {last_sent_id}")
 
         response = requests.get(rss_url, headers={'User-Agent': 'Mozilla/5.0'})
-        soup = BeautifulSoup(response.content, 'html.parser')
+        # Using 'xml' features to silence the warning and parse correctly
+        soup = BeautifulSoup(response.content, features="xml")
         items = soup.find_all('item')
 
         if not items:
-            print("No items found in feed.")
+            print("No items found.")
             return
 
         newest_processed_id = last_sent_id
         
-        # Process items from oldest to newest (reversed) to maintain chronological order
         for item in reversed(items[:15]):
             title = item.find('title').text if item.find('title') else ""
+            description = item.find('description').text if item.find('description') else ""
             link = item.find('link').text if item.find('link') else ""
             
-            # Extract the numerical Tweet ID from the URL
+            # Use the link as a unique ID if status ID isn't found
             match = re.search(r'status/(\d+)', link)
-            current_id = match.group(1) if match else "0"
+            current_id = match.group(1) if match else link
 
-            # 1. Skip if already processed
             if current_id <= last_sent_id:
                 continue
 
-            # 2. Skip marketing/giveaway spam
-            full_text = title.lower()
-            if any(word.lower() in full_text for word in IGNORE_KEYWORDS):
+            # Combine title and description to check for keywords
+            full_content = (title + " " + description).lower()
+
+            if any(word.lower() in full_content for word in IGNORE_KEYWORDS):
                 continue
 
-            # 3. Match high-value content
-            if any(word.lower() in full_text for word in WANT_KEYWORDS):
-                # vxtwitter forces Discord to show the large image card
+            if any(word.lower() in full_content for word in WANT_KEYWORDS):
+                # Force big image preview
                 clean_link = link.replace("x.com", "vxtwitter.com").replace("twitter.com", "vxtwitter.com")
                 
                 payload = {
@@ -83,15 +86,13 @@ def run_filter():
                 res = requests.post(webhook_url, json=payload)
                 if res.status_code in [200, 204]:
                     newest_processed_id = current_id
-                    print(f"Successfully posted Tweet ID: {current_id}")
+                    print(f"Posted: {current_id}")
 
-        # Update Gist memory so we don't dupe on the next run
         if newest_processed_id != last_sent_id:
             update_last_id(gist_id, gist_token, newest_processed_id)
-            print(f"Memory updated to: {newest_processed_id}")
 
     except Exception as e:
-        print(f"Error occurred: {e}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     run_filter()
