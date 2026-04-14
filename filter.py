@@ -7,69 +7,62 @@ def run_filter():
     rss_url = "https://rss.app/feeds/gNSWbxS89cf9JqaP.xml"
     webhook_url = os.getenv("DISCORD_WEBHOOK")
     
-    # --- REFINED EN/JP KEYWORD PATTERNS ---
-    # Targets: New Witches, Laments, CV reveals, and Game Updates
+    # --- REFINED KEYWORDS ---
     WANT_KEYWORDS = [
         "新キャラ", "登場", "実装", "ラメント", "lament", "cv", "song by",
         "予告", "メンテ", "アップデート", "開催", "復刻", "update", "maintenance",
-        "運命ガチャ", "ピックアップ", "布告", "告知", "美少女"
+        "運命ガチャ", "ピックアップ", "布告", "告知"
     ] 
 
-    # Strictly filters out the daily repetitive marketing spam
     IGNORE_KEYWORDS = [
         "キャンペーン", "プレゼント", "抽選", "リツイート", "フォロー", 
         "giveaway", "retweet", "campaign", "thank you", "記念", "amazonギフト"
     ]
-
-    print("Fetching RSS feed from RSS.app...")
 
     if not webhook_url:
         print("CRITICAL ERROR: DISCORD_WEBHOOK is not set.")
         return
 
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(rss_url, headers=headers)
+        response = requests.get(rss_url, headers={'User-Agent': 'Mozilla/5.0'})
         response.raise_for_status()
         
-        # Parse RSS items
         soup = BeautifulSoup(response.content, 'html.parser')
         items = soup.find_all('item')
-        print(f"Total items found in feed: {len(items)}")
 
-        matches_found = 0
-        for item in items:
+        if not items:
+            return
+
+        # We only process the LATEST tweet to avoid spamming the channel
+        # RSS feeds are sorted newest to oldest.
+        for item in items[:3]: # Check only the 3 most recent to stay current
             title = item.find('title').text if item.find('title') else ""
-            description = item.find('description').text if item.find('description') else ""
-            # RSS.app links usually point directly to the tweet
             link = item.find('link').text if item.find('link') else ""
             
-            full_text = (title + " " + description).lower()
+            # 1. Clean the link to use fxtwitter for the "Ideal" big image look
+            clean_link = link.replace("x.com", "fxtwitter.com").replace("twitter.com", "fxtwitter.com")
+            
+            full_text = title.lower()
 
-            # 1. Skip ignored marketing junk
+            # 2. Filter Logic
             if any(word.lower() in full_text for word in IGNORE_KEYWORDS):
                 continue
 
-            # 2. Match high-value content
             if any(word.lower() in full_text for word in WANT_KEYWORDS):
-                matches_found += 1
-                print(f"Match Found: {title[:50]}...")
-                
-                # --- THE IDEAL FORMAT FIX ---
-                # To get the large image preview like the Kepler tweet:
-                # We send the link OUTSIDE of an embed. Discord will then scrape the 
-                # Twitter/X metadata and generate the large card automatically.
-                message_content = f"🔔 **MementoMori Update Found!**\n\n{title}\n\n{link}"
+                # 3. Construct the clean message
+                # No embeds, just plain text + fxtwitter link = Clean "Kepler" look
+                message = f"{title}\n\n{clean_link}"
                 
                 payload = {
                     "username": "MementoMori Official",
                     "avatar_url": "https://mementomori.jp/favicon.ico",
-                    "content": message_content
+                    "content": message
                 }
                 
                 requests.post(webhook_url, json=payload)
-        
-        print(f"Process complete. Sent {matches_found} matches to Discord.")
+                print(f"Sent: {title[:30]}")
+                # Break after sending the most recent match to prevent spam
+                break 
 
     except Exception as e:
         print(f"Error: {e}")
