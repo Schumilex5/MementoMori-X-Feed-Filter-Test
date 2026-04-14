@@ -18,7 +18,7 @@ def update_last_id(gist_id, token, new_id):
     requests.patch(url, headers=headers, json=data)
 
 def clean_text(text):
-    # This strips the annoying <![CDATA[ ]]> tags and extra whitespace
+    # Strips XML/CDATA tags for internal keyword matching
     text = re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', text, flags=re.DOTALL)
     return text.strip()
 
@@ -28,8 +28,31 @@ def run_filter():
     gist_id = os.getenv("GIST_ID")
     gist_token = os.getenv("GIST_TOKEN")
     
-    WANT_KEYWORDS = ["新キャラ", "登場", "実装", "ラメント", "lament", "cv", "song by", "予告", "メンテ", "アップデート", "開催", "復刻", "運命ガチャ", "ピックアップ"]
-    IGNORE_KEYWORDS = ["キャンペーン", "プレゼント", "抽選", "リツイート", "フォロー", "amazonギフト", "記念"]
+    # Filter Keywords in Pairs (JP, EN)
+    WANT_KEYWORDS = [
+        "新キャラ", "New Character",
+        "登場", "Appears",
+        "実装", "Released",
+        "ラメント", "Lament",
+        "cv", "song by",
+        "予告", "Preview",
+        "開催", "Held",
+        "復刻", "Rerun",
+        "運命ガチャ", "Chance of Fate",
+        "ピックアップ", "Pick-up",
+        "キャンペーン", "Campaign",
+        "記念", "Anniversary"
+    ]
+
+    IGNORE_KEYWORDS = [
+        "アップデート", "Update",
+        "メンテ", "Maintenance",
+        "プレゼント", "Present",
+        "抽選", "Lottery",
+        "リツイート", "Retweet",
+        "フォロー", "Follow",
+        "amazonギフト", "Amazon Gift"
+    ]
 
     if not all([webhook_url, gist_id, gist_token]):
         print("Error: Missing environment variables.")
@@ -37,10 +60,9 @@ def run_filter():
 
     try:
         last_sent_id = get_last_id(gist_id, gist_token)
-        print(f"Checking for tweets newer than ID: {last_sent_id}")
-
         response = requests.get(rss_url, headers={'User-Agent': 'Mozilla/5.0'})
-        # Uses the 'xml' parser as requested to avoid the warning properly
+        
+        # Proper XML parser to handle the feed correctly
         soup = BeautifulSoup(response.content, 'xml')
         items = soup.find_all('item')
 
@@ -49,8 +71,8 @@ def run_filter():
 
         newest_processed_id = last_sent_id
         
-        for item in reversed(items[:15]):
-            # Clean the CDATA garbage out of the title and description
+        # Checking more items to ensure we don't miss the 3.5 Anni tweet if it's buried
+        for item in reversed(items[:20]):
             title = clean_text(item.find('title').text if item.find('title') else "")
             description = clean_text(item.find('description').text if item.find('description') else "")
             link = item.find('link').text if item.find('link') else ""
@@ -61,12 +83,18 @@ def run_filter():
             if current_id <= last_sent_id:
                 continue
 
+            # Skip Retweets to avoid "RT by @..." text blocks
+            if title.startswith("RT ") or "RT by @" in title:
+                continue
+
+            # Combine for keyword checking
             full_content = (title + " " + description).lower()
+            
             if any(word.lower() in full_content for word in IGNORE_KEYWORDS):
                 continue
 
             if any(word.lower() in full_content for word in WANT_KEYWORDS):
-                # FIXED: Conditional replacement prevents "vxvxtwitter.com"
+                # Robust link replacement for vxtwitter
                 if "x.com" in link:
                     clean_link = link.replace("x.com", "vxtwitter.com")
                 elif "twitter.com" in link:
@@ -74,15 +102,15 @@ def run_filter():
                 else:
                     clean_link = link
                 
+                # Payload: Drop ONLY the link as requested
                 payload = {
                     "username": "MementoMori Official",
-                    "content": f"**{title}**\n{clean_link}"
+                    "content": clean_link
                 }
                 
                 res = requests.post(webhook_url, json=payload)
                 if res.status_code in [200, 204]:
                     newest_processed_id = current_id
-                    print(f"Posted: {current_id}")
 
         if newest_processed_id != last_sent_id:
             update_last_id(gist_id, gist_token, newest_processed_id)
