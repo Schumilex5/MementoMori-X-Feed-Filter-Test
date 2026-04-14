@@ -1,0 +1,17 @@
+name: Twice Daily Filter
+on:
+  schedule:
+    - cron: '0 0,12 * * *' # Runs at Midnight and Noon UTC
+  workflow_dispatch: # Allows you to click a button to test it
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: pip install requests feedparser
+      - name: Run Filter
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python filter.py
