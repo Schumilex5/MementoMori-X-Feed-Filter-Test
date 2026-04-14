@@ -2,70 +2,75 @@ import os
 import requests
 from bs4 import BeautifulSoup
 
-# --- CONFIGURATION ---
-WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-TARGET_ACCOUNT = "mementomori_boi"
-NITTER_INSTANCE = "https://nitter.net"
+def run_filter():
+    # --- CONFIGURATION ---
+    username = "mementomori_boi"
+    webhook_url = os.getenv("DISCORD_WEBHOOK")
+    
+    # ADD YOUR KEYWORDS HERE (Case-insensitive)
+    WANT_KEYWORDS = ["memento", "update", "new"] 
+    IGNORE_KEYWORDS = ["giveaway", "ad", "promo"]
 
-# Add your keywords here
-WANT_KEYWORDS = ["Update", "Witch", "Maintenance", "New"]  # Only send if it has these
-IGNORE_KEYWORDS = ["Ad", "Promo", "Spam"]               # Skip if it has these
+    # Target URL (X Syndication is more stable for scraping)
+    url = f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{username}"
+    
+    print(f"Scraping @{username}...")
 
-def send_to_discord(tweet_url, tweet_text):
-    """Sends the link to Discord using fxtwitter for rich previews/images."""
-    if not WEBHOOK_URL:
-        print("!! ERROR: DISCORD_WEBHOOK_URL not found in Secrets.")
+    if not webhook_url:
+        print("CRITICAL ERROR: DISCORD_WEBHOOK is not set in GitHub Secrets.")
         return
 
-    # Convert to fxtwitter so Discord shows the image/embed
-    pretty_url = tweet_url.replace("nitter.net", "fxtwitter.com").replace("x.com", "fxtwitter.com")
-    
-    payload = {
-        "content": f"**MementoMori Update:**\n{pretty_url}"
+    # Browser-like headers to avoid being blocked by X
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     }
-    
-    requests.post(WEBHOOK_URL, json=payload)
-    print(f"Sent: {pretty_url}")
-
-def run_filter():
-    print(f"Scraping @{TARGET_ACCOUNT}...")
-    url = f"{NITTER_INSTANCE}/{TARGET_ACCOUNT}"
-    headers = {"User-Agent": "Mozilla/5.0"}
     
     try:
         response = requests.get(url, headers=headers)
-        soup = BeautifulSoup(response.text, "html.parser")
-        tweets = soup.find_all("div", class_="tweet-body")
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        tweets = soup.find_all(class_='timeline-Tweet')
+        print(f"Found {len(tweets)} tweets in the feed.")
+
+        if not tweets:
+            print("No tweets found. X might be rate-limiting the runner.")
+            return
 
         for tweet in tweets:
-            # 1. Get the Link
-            link_element = tweet.find("a", class_="tweet-link")
-            if not link_element: continue
-            tweet_link = f"{NITTER_INSTANCE}{link_element.get('href').split('#')[0]}"
-            
-            # 2. Get the Text for filtering
-            content_element = tweet.find("div", class_="tweet-content")
-            tweet_text = content_element.get_text() if content_element else ""
+            # 1. Extract tweet text and link
+            text_element = tweet.find(class_='timeline-Tweet-text')
+            if not text_element:
+                continue
+                
+            content = text_element.get_text().lower()
+            link_element = tweet.find('a', class_='timeline-Tweet-timestamp')
+            link = link_element['href'] if link_element else "No link found"
 
-            # 3. Apply WANT/IGNORE logic
-            should_send = False
-            
-            # Check if it has any 'WANT' words (or set to True if WANT list is empty)
-            if not WANT_KEYWORDS or any(word.lower() in tweet_text.lower() for word in WANT_KEYWORDS):
-                should_send = True
-            
-            # Check if it has any 'IGNORE' words
-            if any(word.lower() in tweet_text.lower() for word in IGNORE_KEYWORDS):
-                should_send = False
+            # 2. Apply IGNORE Filter
+            if any(word.lower() in content for word in IGNORE_KEYWORDS):
+                print(f"Skipping tweet (Contains Ignored Word): {content[:50]}...")
+                continue
 
-            # 4. If it passed the filter, send it!
-            if should_send:
-                send_to_discord(tweet_link, tweet_text)
+            # 3. Apply WANT Filter
+            if any(word.lower() in content for word in WANT_KEYWORDS):
+                print(f"Match Found: {content[:50]}... Sending to Discord.")
+                
+                payload = {
+                    "username": "X Filter Bot",
+                    "content": f"**Match Found for @{username}!**\n{text_element.get_text()}\n\n🔗 [View on X]({link})"
+                }
+                
+                res = requests.post(webhook_url, json=payload)
+                if res.status_code in [200, 204]:
+                    print("Successfully sent to Discord.")
+                else:
+                    print(f"Discord error: {res.status_code}")
             else:
-                print(f"Skipping (Filtered): {tweet_link}")
+                print(f"No match found in tweet: {content[:50]}...")
 
     except Exception as e:
-        print(f"Error during run: {e}")
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     run_filter()
