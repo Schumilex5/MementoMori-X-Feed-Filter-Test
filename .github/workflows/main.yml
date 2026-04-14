@@ -4,17 +4,17 @@ on:
     - cron: '0 0,12 * * *'
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   run-filter:
     runs-on: ubuntu-latest
     steps:
-      # Upgrading to v6 is the correct fix for Node 24 compatibility
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v1.0.0
       
-      # Upgrading to v6 removes the setup-python deprecation warning
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
+      - name: Set up Python
+        uses: actions/setup-python@v1.0.0
           
       - name: Install Dependencies
         run: pip install requests feedparser
