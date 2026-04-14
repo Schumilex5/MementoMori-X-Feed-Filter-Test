@@ -4,16 +4,12 @@ on:
     - cron: '0 0,12 * * *'
   workflow_dispatch:
 
-# This forces the new Node 24 engine across the entire workflow
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   run-filter:
     runs-on: ubuntu-latest
     steps:
-      # Upgraded to v4.2.2 which supports Node 24
-      - uses: actions/checkout@v4.2.2
+      # Upgrading to v6 solves the Node.js 20 deprecation correctly
+      - uses: actions/checkout@v6
       
       - name: Install Dependencies
         run: pip install requests feedparser
