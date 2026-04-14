@@ -2,11 +2,6 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import re
-import warnings
-from bs4 import XMLParsedAsHTMLWarning
-
-# Silence the annoying warning
-warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 def get_last_id(gist_id, token):
     url = f"https://api.github.com/gists/{gist_id}"
@@ -45,8 +40,9 @@ def run_filter():
         print(f"Checking for tweets newer than ID: {last_sent_id}")
 
         response = requests.get(rss_url, headers={'User-Agent': 'Mozilla/5.0'})
-        # Using 'xml' features to silence the warning and parse correctly
-        soup = BeautifulSoup(response.content, features="xml")
+        
+        # FIXED: Explicitly using the 'xml' parser to handle RSS data properly
+        soup = BeautifulSoup(response.content, 'xml')
         items = soup.find_all('item')
 
         if not items:
@@ -60,21 +56,21 @@ def run_filter():
             description = item.find('description').text if item.find('description') else ""
             link = item.find('link').text if item.find('link') else ""
             
-            # Use the link as a unique ID if status ID isn't found
+            # Use status ID for numerical comparison
             match = re.search(r'status/(\d+)', link)
             current_id = match.group(1) if match else link
 
             if current_id <= last_sent_id:
                 continue
 
-            # Combine title and description to check for keywords
+            # Check both title and body for keywords
             full_content = (title + " " + description).lower()
 
             if any(word.lower() in full_content for word in IGNORE_KEYWORDS):
                 continue
 
             if any(word.lower() in full_content for word in WANT_KEYWORDS):
-                # Force big image preview
+                # Using vxtwitter for the high-quality embed card
                 clean_link = link.replace("x.com", "vxtwitter.com").replace("twitter.com", "vxtwitter.com")
                 
                 payload = {
