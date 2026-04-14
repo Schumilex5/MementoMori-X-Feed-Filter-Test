@@ -2,8 +2,8 @@ import os
 import requests
 import feedparser
 
-# --- SETTINGS ---
-# Using a fresh Nitter instance - if this is empty, we must use RSS.app
+# --- CONFIG ---
+# If this RSS link is empty, use RSS.app to get a fresh one for mementomori_boi
 RSS_URL = "https://nitter.net/mementomori_boi/rss" 
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
@@ -11,20 +11,23 @@ WANT = ["maintenance", "メンテナンス", "メンテ", "character", "新登�
 IGNORE = ["live", "生放送", "YouTube", "grand battle", "グランドバトル", "グラバト", "guild battle", "ギルドバトル", "ギルバト", "version update", "アップデート", "Ver."]
 
 # --- THE LOGIC ---
-# This line proves the connection works. If you don't see this, the Webhook Secret is wrong.
-requests.post(WEBHOOK_URL, json={"content": "📢 Filter Script checking for news..."})
+# First, send a status update to Discord to prove the connection is ALIVE
+requests.post(WEBHOOK_URL, json={"content": "✅ **System Check:** Script is running on Node 24. Checking feed now..."})
 
 feed = feedparser.parse(RSS_URL)
 
 if not feed.entries:
-    print("CRITICAL: The RSS feed is empty! Twitter is blocking this URL.")
-    requests.post(WEBHOOK_URL, json={"content": "⚠️ RSS Feed is currently blocked by Twitter. Need new URL."})
+    # If the feed is blocked/empty, tell Discord so you know why there are no tweets
+    requests.post(WEBHOOK_URL, json={"content": "❌ **RSS Error:** The Twitter feed is empty. Twitter is blocking the current RSS link."})
 else:
-    print(f"Checking {len(feed.entries)} tweets...")
+    found_any = False
     for entry in feed.entries[:5]:
         text = entry.title.lower()
-        # Filter Logic
         if any(x.lower() in text for x in IGNORE):
             continue
         if any(x.lower() in text for x in WANT):
-            requests.post(WEBHOOK_URL, json={"content": f"**MementoMori News:**\n{entry.link}"})
+            requests.post(WEBHOOK_URL, json={"content": f"**MementoMori Update Found:**\n{entry.link}"})
+            found_any = True
+    
+    if not found_any:
+        print("Feed was read successfully, but no matching tweets were found today.")
