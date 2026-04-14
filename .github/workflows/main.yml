@@ -8,9 +8,13 @@ jobs:
   run-filter:
     runs-on: ubuntu-latest
     steps:
-      # Upgrading to v6 solves the Node.js 20 deprecation correctly
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6 # Native Node 24 support
       
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
       - name: Install Dependencies
         run: pip install requests feedparser
         
