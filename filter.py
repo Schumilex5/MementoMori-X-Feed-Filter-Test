@@ -38,7 +38,6 @@ def run_filter():
         "抽選", "Lottery",
         "リツイート", "Retweet",
         "フォロー", "Follow",
-        "amazonギフト", "Amazon Gift"
     ]
 
     if not webhook_url:
