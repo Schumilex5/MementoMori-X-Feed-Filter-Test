@@ -30,8 +30,9 @@ def run_filter():
         "記念", "Anniversary"
     ]
 
+    # Fixed: Replaced "/" with a comma to create a valid list of strings
     IGNORE_KEYWORDS = [
-        "ライブ" / "Live",
+        "ライブ", "Live",
         "アップデート", "Update",
         "メンテ", "Maintenance",
         "プレゼント", "Present",
